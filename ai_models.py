@@ -1,13 +1,18 @@
 import tensorflow as tf
 import tensorflow_probability as tfp
-from datetime import datetime
-
-import mt5_interaction as mty
-from data_preparation import prepare_market_data
+import numpy as np
+import pandas as pd
+import mt5_interaction as mt5
+from data_preparation import prepare_market_data, get_data
 from quantum_model import quantum_portfolio_optimization
-from utils import is_market_open, calculate_sl_tp, is_high_impact_news
+from utils import is_market_open
+from tensorflow_probability.python.distributions import kullback_leibler
 
 tfd = tfp.distributions
+
+# Portfolio symbols for AI-Based Trading Strategies
+TRADING_ASSETS = ["EURUSD", "XAUUSD", "USDJPY", "AUDUSD"]
+
 
 class DenseVariational(tf.keras.layers.Layer):
     """Dense layer with random kernel and bias using variational inference."""
@@ -191,8 +196,8 @@ def train_and_forecast_bayesian_model():
         future_price = future_price_pred.mean().numpy()[0]
 
         trade_direction = "BUY" if future_price > X[-1][-1][0] else "SELL"
-        if not mty.order_exists(symbol, trade_direction, 123456):
-            order_result = mty.place_order(order_type=trade_direction, symbol=symbol, volume=0.1, stop_loss=0.0, take_profit=0.0, comment="AI Trade BNN", magic_number=123456)
+        if not mt5.order_exists(symbol, trade_direction, 123456):
+            order_result = mt5.place_order(order_type=trade_direction, symbol=symbol, volume=0.1, stop_loss=0.0, take_profit=0.0, comment="AI Trade BNN", magic_number=123456)
             if order_result:
                 pass
             else:
@@ -204,14 +209,36 @@ def execute_ai_trade():
     optimized_weights = quantum_portfolio_optimization(["EURUSD", "XAUUSD", "USDJPY", "AUDUSD"])
     for symbol, weight in zip(["EURUSD", "XAUUSD", "USDJPY", "AUDUSD"], optimized_weights):
         trade_direction = "BUY" if weight > 0 else "SELL"
-        if not mty.order_exists(symbol, trade_direction, 654321):
-            order_result = mty.place_order(order_type=trade_direction, symbol=symbol, volume=0.1, stop_loss=0.0, take_profit=0.0, comment="AI Trade Quantum", magic_number=654321)
+        if not mt5.order_exists(symbol, trade_direction, 654321):
+            order_result = mt5.place_order(order_type=trade_direction, symbol=symbol, volume=0.1, stop_loss=0.0, take_profit=0.0, comment="AI Trade Quantum", magic_number=654321)
             if order_result:
                 pass
             else:
                 pass
         else:
             pass
+
+def run_backtesting():
+    print("Running backtesting...")
+    # Backtest BNN
+    all_bnn_trades = []
+    for symbol in TRADING_ASSETS:
+        bnn_trades = backtest_bnn(symbol)
+        if bnn_trades:
+            all_bnn_trades.extend(bnn_trades)
+    
+    bnn_results, bnn_total_profit_loss = evaluate_performance(all_bnn_trades)
+    print("BNN Results:")
+    print(bnn_results)
+    print(f"BNN Total Profit/Loss: {bnn_total_profit_loss}")
+    
+    # Backtest Quantum
+    quantum_trades = backtest_quantum()
+    quantum_results, quantum_total_profit_loss = evaluate_performance(quantum_trades)
+    print("Quantum Results:")
+    print(quantum_results)
+    print(f"Quantum Total Profit/Loss: {quantum_total_profit_loss}")
+
 
 def backtest_bnn(symbol):
     X, y, scaler = prepare_market_data(symbol, 50)
@@ -244,6 +271,7 @@ def backtest_quantum():
     return trades
 
 def evaluate_performance(trades):
+    """Evaluate the performance of the trades."""
     results = []
     for trade in trades:
         symbol, direction, actual_price, predicted_value = trade
@@ -252,3 +280,4 @@ def evaluate_performance(trades):
     
     df_results = pd.DataFrame(results, columns=["Symbol", "Direction", "Actual Price", "Predicted Value", "Profit/Loss"])
     total_profit_loss = df_results["Profit/Loss"].sum()
+    return df_results, total_profit_loss
